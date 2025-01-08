@@ -77,6 +77,7 @@ __global__ void TransposeMatrix(const float *A, float *transpose, int N) {
         transpose[transposedRow * N + transposedCol] = sharedMem[localCol][localRow];
     }
 }
+
 __global__ void MatrixMul(float* Md, float* Nd, float* Pd, int Width)
 {
   // declare cache in the shared memory
@@ -102,10 +103,11 @@ __global__ void MatrixMul(float* Md, float* Nd, float* Pd, int Width)
       Pvalue += Mds[threadIdx.y][k] * Nds[k][threadIdx.x];
     __syncthreads();
   }
-  
-  // write back to the global memory
-  Pd[y * Width + x] = Pvalue;
+
+  if (y < Width && x < Width)
+    Pd[y * Width + x] = Pvalue;
 }
+
 int main(int argc, char **argv) {
     if (argc < 3) {
         fprintf(stderr, "Usage: %s <N> <ThreadsPerBlock>\n", argv[0]);
