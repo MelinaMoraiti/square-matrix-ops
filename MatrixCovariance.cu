@@ -30,9 +30,7 @@ __global__ void computeAndSubtractAverages(const int *A, float *colAverages, flo
     }
     
     if (localRow == 0 && globalCol < N){
-		//colSums[globalCol] = sharedMem[0][localCol];
         colAverages[globalCol] = (float)sharedMem[0][localCol]/N;
-        //float average = colAverages[globalCol];
 	}
     __syncthreads();
 
@@ -41,7 +39,73 @@ __global__ void computeAndSubtractAverages(const int *A, float *colAverages, flo
     }
 
 }
+// NO SHARED MEMORY
+/*
+__global__ void CovarianceMatrix(const float *A, float *covariance, int N) {
+    // Calculate global row and column indices
+    int globalCol = blockIdx.x * blockSide + threadIdx.x;
+    int globalRow = blockIdx.y * blockSide + threadIdx.y;
 
+    // Load matrix element into shared memory (only load if within matrix bounds)
+    if (globalRow < N && globalCol < N) {
+        covariance[globalCol * N + globalRow] = A[globalRow * N + globalCol];
+    }
+}
+*/
+
+//SHARED MEMORY
+__global__ void TransposeMatrix(const float *A, float *transpose, int N) {
+    // Declare dynamically allocated shared memory for matrix block (each thread loads a matrix element into shared memory)
+    __shared__ float sharedMem[blockSide][blockSide];
+
+    // Calculate global row and column indices
+    int globalCol = blockIdx.x * blockSide + threadIdx.x;
+    int globalRow = blockIdx.y * blockSide + threadIdx.y;
+    // Local row and column indices within the block
+    int localRow = threadIdx.y;
+    int localCol = threadIdx.x;
+
+    if (globalRow < N && globalCol < N) {
+        sharedMem[localRow][localCol] = A[globalRow * N + globalCol];
+    }
+
+    // Write transposed data back to covariance matrix (coalesced write)
+    int transposedCol = blockIdx.y * blockSide + threadIdx.x;
+    int transposedRow = blockIdx.x * blockSide + threadIdx.y;
+
+    if (transposedRow < N && transposedCol < N) {
+        transpose[transposedRow * N + transposedCol] = sharedMem[localCol][localRow];
+    }
+}
+__global__ void MatrixMul(float* Md, float* Nd, float* Pd, int Width)
+{
+  // declare cache in the shared memory
+  __shared__ float Mds[blockSide][blockSide];
+  __shared__ float Nds[blockSide][blockSide];
+ 
+  // keep track of column index of the Pd element using thread index
+  int x = threadIdx.x + blockIdx.x * blockDim.x; // x is column
+  // keep track of row index of the Pd element using thread index
+  int y = threadIdx.y + blockIdx.y * blockDim.y; // y is row
+
+  float Pvalue = 0;
+  // Loop over the Md and Nd block dimension required to compute the Pd element
+  for (int m = 0; m < Width/blockSide; m++){
+	
+    // collaboratively loading of Md and Nd blocks into shared memory	 
+    Mds[threadIdx.y][threadIdx.x] = Md[y * Width + (m * blockSide + threadIdx.x)];
+    Nds[threadIdx.y][threadIdx.x] = Md[(m * blockSide + threadIdx.y) * Width + x];
+    __syncthreads();
+    
+    // keep track of the running sum    
+    for (int k = 0; k < blockSide; k++)
+      Pvalue += Mds[threadIdx.y][k] * Nds[k][threadIdx.x];
+    __syncthreads();
+  }
+  
+  // write back to the global memory
+  Pd[y * Width + x] = Pvalue;
+}
 int main(int argc, char **argv) {
     if (argc < 3) {
         fprintf(stderr, "Usage: %s <N> <ThreadsPerBlock>\n", argv[0]);
@@ -72,20 +136,18 @@ int main(int argc, char **argv) {
         printf("Input Matrix A:\n");
         print2D(h_A, N, N, stdout, 'i');
     }
-
-    // Allocate device memory
-    int *d_A;
-    float *d_adjustedA, *d_colAverages;
-    //float *d_colSums;
-    cudaMalloc((void **)&d_A, matrixSize * sizeof(int));
-    cudaMalloc((void **)&d_adjustedA, matrixSize * sizeof(float));
-    cudaMalloc((void **)&d_colAverages, N * sizeof(float));
-    //cudaMalloc((void **)&d_colSums, N * sizeof(int));  // Allocate colSums
-
     // Define grid and block dimensions
     dim3 dimGrid((N + blockSide - 1) / blockSide, (N + blockSide - 1) / blockSide);
     dim3 dimBlock(blockSide, blockSide);
-    
+
+     /* i) και ii) ΑΝΑΣΤΡΟΦΗ Α ΚΑΙ ΥΠΟΛΟΓΙΣΜΟΣ ΑΤ * Α */
+    // Allocate device memory
+    int *d_A;
+    float *d_adjustedA, *d_colAverages;
+    cudaMalloc((void **)&d_A, matrixSize * sizeof(int));
+    cudaMalloc((void **)&d_adjustedA, matrixSize * sizeof(float));
+    cudaMalloc((void **)&d_colAverages, N * sizeof(float));
+
     // Copy data to device
     cudaMemcpy(d_A, h_A, matrixSize * sizeof(int), cudaMemcpyHostToDevice);
 
@@ -111,25 +173,62 @@ int main(int argc, char **argv) {
     // Copy results back to host
     float *h_colAverages = (float *)malloc(N * sizeof(float));
     float *h_newA = (float *)malloc(matrixSize * sizeof(float));
-    //int *h_colSums = (int *)malloc(N * sizeof(int));
     cudaMemcpy(h_colAverages, d_colAverages, N * sizeof(float), cudaMemcpyDeviceToHost);
     cudaMemcpy(h_newA, d_adjustedA, matrixSize * sizeof(float), cudaMemcpyDeviceToHost);
-    //cudaMemcpy(h_colSums, d_colSums, N * sizeof(int), cudaMemcpyDeviceToHost);
 
     // Print results
     printf("\n\nAverages:\n");
-    if (N < 10) print2D(h_colAverages, N, 1, stdout, 'f');
+    if (N < 10) print2D(h_colAverages, 1, N, stdout, 'f');
     printf("\n\nNew A (subtracted by averages):\n");
     if (N < 10) print2D(h_newA, N, N, stdout, 'f');
 
+    /* iii) ΑΝΑΣΤΡΟΦΗ Α ΚΑΙ ΥΠΟΛΟΓΙΣΜΟΣ COVARIANCE = Α * ΑΤransposed */
+    // Allocate memory for transposed matrix
+    float *d_transposedA, *h_transposedA, *d_covarianceA, *h_covarianceA;
+    cudaMalloc((void **)&d_transposedA, matrixSize * sizeof(float));
+    h_transposedA = (float *)malloc(matrixSize * sizeof(float));
+
+    HANDLE_ERROR(cudaEventCreate(&start));
+    HANDLE_ERROR(cudaEventCreate(&stop));
+
+    // Start timing for max and sum kernel
+    HANDLE_ERROR(cudaEventRecord(start, 0));
+    
+    // TransposeMatrix KERNEL LAUNCH
+    TransposeMatrix<<<dimGrid, dimBlock>>>(d_adjustedA, d_transposedA, N);
+    HANDLE_ERROR(cudaDeviceSynchronize());
+    // Stop timing for max and sum kernel
+    HANDLE_ERROR(cudaEventRecord(stop, 0));
+    HANDLE_ERROR(cudaEventSynchronize(stop));
+    float timeElapsed2;
+    HANDLE_ERROR(cudaEventElapsedTime(&timeElapsed2, start, stop));
+    printf("Time for kernel: %.3f ms\n", timeElapsed2);
+    // Copy transposed matrix back to host
+    cudaMemcpy(h_transposedA, d_transposedA, matrixSize * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // Print transposed matrix if small
+    printf("\n\nTransposed New A:\n");
+    if (N < 10) print2D(h_transposedA, N, N, stdout, 'f');
+    // CovarianceMatrix KERNEL LAUNCH
+    cudaMalloc((void **)&d_covarianceA, matrixSize * sizeof(float));
+    h_covarianceA = (float *)malloc(matrixSize * sizeof(float));
+    MatrixMul<<<dimGrid, dimBlock>>>(d_adjustedA, d_transposedA, d_covarianceA, N);
+    cudaMemcpy(h_covarianceA, d_covarianceA, matrixSize * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // Print transposed matrix if small
+    printf("\n\nCovariance A:\n");
+    if (N < 10) print2D(h_covarianceA, N, N, stdout, 'f');
+
     // Cleanup
+    free(h_transposedA);
+    cudaFree(d_transposedA);
+    free(h_covarianceA);
+    cudaFree(d_covarianceA);
     free(h_A);
     free(h_colAverages);
     free(h_newA);
-    //free(h_colSums);
     cudaFree(d_A);
     cudaFree(d_colAverages);
     cudaFree(d_adjustedA);
-    //cudaFree(d_colSums);  
     return 0;
 }
