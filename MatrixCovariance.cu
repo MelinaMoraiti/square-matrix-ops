@@ -68,7 +68,7 @@ __global__ void TransposeMatrix(const float *A, float *transpose, int N) {
     if (globalRow < N && globalCol < N) {
         sharedMem[localRow][localCol] = A[globalRow * N + globalCol];
     }
-
+    __syncthreads();
     // Write transposed data back to covariance matrix (coalesced write)
     int transposedCol = blockIdx.y * blockSide + threadIdx.x;
     int transposedRow = blockIdx.x * blockSide + threadIdx.y;
@@ -103,9 +103,7 @@ __global__ void MatrixMul(float* Md, float* Nd, float* Pd, int Width)
       Pvalue += Mds[threadIdx.y][k] * Nds[k][threadIdx.x];
     __syncthreads();
   }
-
-  if (y < Width && x < Width)
-    Pd[y * Width + x] = Pvalue;
+   Pd[y * Width + x] = Pvalue;
 }
 
 int main(int argc, char **argv) {
@@ -170,7 +168,6 @@ int main(int argc, char **argv) {
     HANDLE_ERROR(cudaEventSynchronize(stop));
     float timeElapsed;
     HANDLE_ERROR(cudaEventElapsedTime(&timeElapsed, start, stop));
-    printf("Time for kernel: %.3f ms\n", timeElapsed);
 
     // Copy results back to host
     float *h_colAverages = (float *)malloc(N * sizeof(float));
@@ -190,47 +187,55 @@ int main(int argc, char **argv) {
     cudaMalloc((void **)&d_transposedA, matrixSize * sizeof(float));
     h_transposedA = (float *)malloc(matrixSize * sizeof(float));
 
-    HANDLE_ERROR(cudaEventCreate(&start));
-    HANDLE_ERROR(cudaEventCreate(&stop));
-
-    // Start timing for max and sum kernel
+    // Start timing 
     HANDLE_ERROR(cudaEventRecord(start, 0));
-    
     // TransposeMatrix KERNEL LAUNCH
     TransposeMatrix<<<dimGrid, dimBlock>>>(d_adjustedA, d_transposedA, N);
     HANDLE_ERROR(cudaDeviceSynchronize());
-    // Stop timing for max and sum kernel
+    // Stop timing 
     HANDLE_ERROR(cudaEventRecord(stop, 0));
     HANDLE_ERROR(cudaEventSynchronize(stop));
     float timeElapsed2;
     HANDLE_ERROR(cudaEventElapsedTime(&timeElapsed2, start, stop));
-    printf("Time for kernel: %.3f ms\n", timeElapsed2);
+    
     // Copy transposed matrix back to host
     cudaMemcpy(h_transposedA, d_transposedA, matrixSize * sizeof(float), cudaMemcpyDeviceToHost);
 
     // Print transposed matrix if small
     printf("\n\nTransposed New A:\n");
     if (N < 10) print2D(h_transposedA, N, N, stdout, 'f');
+
     // CovarianceMatrix KERNEL LAUNCH
     cudaMalloc((void **)&d_covarianceA, matrixSize * sizeof(float));
     h_covarianceA = (float *)malloc(matrixSize * sizeof(float));
+    HANDLE_ERROR(cudaEventRecord(start, 0));
     MatrixMul<<<dimGrid, dimBlock>>>(d_adjustedA, d_transposedA, d_covarianceA, N);
+    HANDLE_ERROR(cudaDeviceSynchronize());
+    HANDLE_ERROR(cudaEventRecord(stop, 0));
+    HANDLE_ERROR(cudaEventSynchronize(stop));
+    float timeElapsed3;
+    HANDLE_ERROR(cudaEventElapsedTime(&timeElapsed3, start, stop));
     cudaMemcpy(h_covarianceA, d_covarianceA, matrixSize * sizeof(float), cudaMemcpyDeviceToHost);
 
     // Print transposed matrix if small
     printf("\n\nCovariance A:\n");
     if (N < 10) print2D(h_covarianceA, N, N, stdout, 'f');
 
+    printf("-------------------------------------------EXECUTION TIMES FOR KERNELS----------------------------------\n");
+    printf("Time for kernel computeAndSubtractAverages: %.3f ms\n", timeElapsed);
+    printf("Time for kernel TransposeMatrix: %.3f ms\n", timeElapsed2);
+    printf("Time for kernel MatrixMul: %.3f ms\n", timeElapsed3);
+
     // Cleanup
-    free(h_transposedA);
-    cudaFree(d_transposedA);
-    free(h_covarianceA);
-    cudaFree(d_covarianceA);
     free(h_A);
     free(h_colAverages);
     free(h_newA);
+    free(h_transposedA);
+    free(h_covarianceA);
     cudaFree(d_A);
     cudaFree(d_colAverages);
     cudaFree(d_adjustedA);
+    cudaFree(d_transposedA);
+    cudaFree(d_covarianceA);
     return 0;
 }
