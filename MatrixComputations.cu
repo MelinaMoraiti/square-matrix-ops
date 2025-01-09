@@ -104,6 +104,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     } 
     int matrixSize = N * N;
+    // TOTAL THREADS == MATRIX SIZE (N^2)
     int BlocksPerGrid = (matrixSize + ThreadsPerBlock - 1) / ThreadsPerBlock;
    
     // Host memory
