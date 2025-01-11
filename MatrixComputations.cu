@@ -201,7 +201,7 @@ int main(int argc, char **argv) {
         HANDLE_ERROR(cudaEventSynchronize(stop));
         float minBTime;
         HANDLE_ERROR(cudaEventElapsedTime(&minBTime, start, stop));
-        printf("Time for findMin In Matrix B kernel: %.3f ms\n", minBTime);
+        printf("Time for findMinInMatrix B kernel: %.3f ms\n", minBTime);
 
         // Host reduction for global minimum
         float *h_minValues = createFloatMatrix(BlocksPerGrid);
