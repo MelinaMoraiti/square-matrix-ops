@@ -91,7 +91,7 @@ __global__ void MatrixMul(float* Md, float* Nd, float* Pd, int Width)
 
   float Pvalue = 0;
   // Loop over the Md and Nd block dimension required to compute the Pd element
-  for (int m = 0; m < Width/blockSide; m++){
+  for (int m = 0; m < (Width + blockSide - 1) /blockSide; m++){
 	
     // collaboratively loading of Md and Nd blocks into shared memory	 
     Mds[threadIdx.y][threadIdx.x] = Md[y * Width + (m * blockSide + threadIdx.x)];
