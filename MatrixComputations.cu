@@ -6,7 +6,7 @@
 // Kernel to calculate maximum and sum of the matrix
 __global__ void computeMaxAndSum(const int *A, int *max_result, int *sum_result, int N) {
     extern __shared__ int sharedData[];
-    int *sharedMax = sharedData;                  // Shared memory for max
+    int *sharedMax = sharedData;   // Shared memory for max
     float *sharedSum = (float*)&sharedData[blockDim.x]; // Shared memory for sum
 
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -20,7 +20,7 @@ __global__ void computeMaxAndSum(const int *A, int *max_result, int *sum_result,
     while (tid < N) {
         int val = A[tid];
         localMax = findMax(localMax, val); // Calculate local max
-        localSum += val;              // Calculate local sum
+        localSum += val;  // Calculate local sum
         tid += blockDim.x * gridDim.x; // Stride to next portion
     }
 
@@ -51,6 +51,7 @@ __global__ void computeMatrixB(const int *A, float *B, float m, int amax, int N)
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid < N * N) {
         B[tid] = (m - A[tid]) / amax;
+        //tid += blockDim.x * gridDim.x; 
     }
 }
 __global__ void findMinInMatrixB(float *B, float *minValue, int N) {
@@ -89,6 +90,7 @@ __global__ void computeMatrixC(const int *A, float *C, int N) {
         C[tid] = (A[row * N + col] + left + right) / 3.0f;
     }
 }
+
 int main(int argc, char **argv) {
     if (argc < 3) {
         fprintf(stderr, "Usage: %s <N> <ThreadsPerBlock>\n", argv[0]);
@@ -104,12 +106,12 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     } 
     int matrixSize = N * N;
-    // TOTAL THREADS == MATRIX SIZE (N^2)
+    // TOTAL THREADS == MATRIX SIZE (N^2) 
     int BlocksPerGrid = (matrixSize + ThreadsPerBlock - 1) / ThreadsPerBlock;
    
     // Host memory
     int *h_A = createIntMatrix(matrixSize);
-    initializeRandArray(h_A, matrixSize);
+    initializeArray(h_A, matrixSize);
     printf("Input Matrix A:\n");
     // PRINT MATRIX IF IT IS SMALL...
     if (N < 10) print2D(h_A, N, N, stdout, 'i');
@@ -194,7 +196,7 @@ int main(int argc, char **argv) {
         printf("Time for findMin In Matrix B kernel: %.3f ms\n", minBTime);
 
         // Host reduction for global minimum
-        float *h_minValues = (float *)malloc(BlocksPerGrid * sizeof(float));
+        float *h_minValues = createFloatMatrix(BlocksPerGrid);
         HANDLE_ERROR(cudaMemcpy(h_minValues, d_minValues, BlocksPerGrid * sizeof(float), cudaMemcpyDeviceToHost));
 
         //Compute Global minimum on Host.
@@ -206,7 +208,7 @@ int main(int argc, char **argv) {
         printf("Global Minimum of Matrix B: %.2f\n", globalMin);
 
         // Retrieve Matrix B for printing
-        float *h_B = (float *)malloc(matrixSize * sizeof(float));
+        float *h_B = createFloatMatrix(matrixSize);
         HANDLE_ERROR(cudaMemcpy(h_B, d_B, matrixSize * sizeof(float), cudaMemcpyDeviceToHost));
 
         // PRINT MATRIX IF IT IS SMALL...
@@ -240,7 +242,7 @@ int main(int argc, char **argv) {
         printf("Time for computeMatrixC kernel: %.3f ms\n", matrixCTime);
 
         // Retrieve Matrix C for printing
-        float *h_C = (float *)malloc(matrixSize * sizeof(float));
+        float *h_C = createFloatMatrix(matrixSize);
         HANDLE_ERROR(cudaMemcpy(h_C, d_C, matrixSize * sizeof(float), cudaMemcpyDeviceToHost));
         // PRINT MATRIX IF IT IS SMALL...
         if (N < 10)
