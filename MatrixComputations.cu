@@ -49,9 +49,9 @@ __global__ void computeMaxAndSum(const int *A, int *max_result, int *sum_result,
 // Kernel to compute matrix B
 __global__ void computeMatrixB(const int *A, float *B, float m, int amax, int N) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (tid < N * N) {
+    while (tid < N * N) {
         B[tid] = (m - A[tid]) / amax;
-        //tid += blockDim.x * gridDim.x; 
+        tid += blockDim.x * gridDim.x; 
     }
 }
 __global__ void findMinInMatrixB(float *B, float *minValue, int N) {
@@ -59,9 +59,16 @@ __global__ void findMinInMatrixB(float *B, float *minValue, int N) {
 
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int blockTid = threadIdx.x;
+  // Initialize local minimum with a large value
+    float localMin = FLT_MAX;
 
-    // Initialize shared memory to store values
-    sharedMin[blockTid] = (tid < N * N) ? B[tid] : FLT_MAX; // If out of bounds, set to a large value (FLT_MAX)
+    // Process elements in chunks using a strided loop
+    for (int idx = tid; idx < N * N; idx += blockDim.x * gridDim.x) {
+        localMin = findMinFloat(localMin, B[idx]); // Update local minimum
+    }
+
+    // Store the local minimum in shared memory
+    sharedMin[blockTid] = localMin;
     __syncthreads();
 
     // Perform binary tree reduction to find the minimum
@@ -80,7 +87,7 @@ __global__ void findMinInMatrixB(float *B, float *minValue, int N) {
 }
 __global__ void computeMatrixC(const int *A, float *C, int N) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (tid < N * N) {
+    while (tid < N * N) {
         int row = tid / N;
         int col = tid % N;
 
@@ -88,6 +95,7 @@ __global__ void computeMatrixC(const int *A, float *C, int N) {
         int right = col == (N - 1) ? A[row * N] : A[row * N + (col + 1)];
 
         C[tid] = (A[row * N + col] + left + right) / 3.0f;
+        tid += blockDim.x * gridDim.x;
     }
 }
 
