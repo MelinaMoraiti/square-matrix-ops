@@ -176,10 +176,17 @@ int main(int argc, char **argv) {
     cudaMemcpy(h_newA, d_adjustedA, matrixSize * sizeof(float), cudaMemcpyDeviceToHost);
 
     // Print results
-    printf("\n\nAverages:\n");
-    if (N < 10) print2D(h_colAverages, 1, N, stdout, 'f');
-    printf("\n\nNew A (subtracted by averages):\n");
-    if (N < 10) print2D(h_newA, N, N, stdout, 'f');
+    if (N < 10) 
+    {
+        printf("\n\nAverages:\n");
+        print2D(h_colAverages, 1, N, stdout, 'f');
+    }
+    
+    if (N < 10) 
+    {
+        printf("\n\nNew A (subtracted by averages):\n");
+        print2D(h_newA, N, N, stdout, 'f');
+    } 
 
     /* iii) ΑΝΑΣΤΡΟΦΗ Α ΚΑΙ ΥΠΟΛΟΓΙΣΜΟΣ COVARIANCE = Α * ΑΤransposed */
     // Allocate memory for transposed matrix
@@ -202,8 +209,10 @@ int main(int argc, char **argv) {
     cudaMemcpy(h_transposedA, d_transposedA, matrixSize * sizeof(float), cudaMemcpyDeviceToHost);
 
     // Print transposed matrix if small
-    printf("\n\nTransposed New A:\n");
-    if (N < 10) print2D(h_transposedA, N, N, stdout, 'f');
+    if (N < 10) {
+        printf("\n\nTransposed New A:\n");
+        print2D(h_transposedA, N, N, stdout, 'f');
+    }
 
     // CovarianceMatrix KERNEL LAUNCH
     cudaMalloc((void **)&d_covarianceA, matrixSize * sizeof(float));
@@ -218,8 +227,12 @@ int main(int argc, char **argv) {
     cudaMemcpy(h_covarianceA, d_covarianceA, matrixSize * sizeof(float), cudaMemcpyDeviceToHost);
 
     // Print transposed matrix if small
-    printf("\n\nCovariance A:\n");
-    if (N < 10) print2D(h_covarianceA, N, N, stdout, 'f');
+    
+    if (N < 10) 
+    {
+        printf("\n\nCovariance A:\n");
+        print2D(h_covarianceA, N, N, stdout, 'f');
+    }
 
     printf("-------------------------------------------EXECUTION TIMES FOR KERNELS----------------------------------\n");
     printf("Time for kernel computeAndSubtractAverages: %.3f ms\n", timeElapsed);

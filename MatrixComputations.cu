@@ -120,9 +120,12 @@ int main(int argc, char **argv) {
     // Host memory
     int *h_A = createIntMatrix(matrixSize);
     initializeArray(h_A, matrixSize);
-    printf("Input Matrix A:\n");
     // PRINT MATRIX IF IT IS SMALL...
-    if (N < 10) print2D(h_A, N, N, stdout, 'i');
+    if (N < 10) 
+    {
+        printf("Input Matrix A:\n");
+        print2D(h_A, N, N, stdout, 'i');
+    }
 
     // Device memory
     int *d_A, *d_max, *d_sum;
